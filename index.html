@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GOMAPs — School Bus Tracker</title>
+<style>
+  :root{
+    --bg:#F6F5F1; --panel:#FFFFFF; --ink:#14213D; --muted:#5B6B85;
+    --accent:#F5B700; --good:#2E8B57; --alert:#D64550; --border:rgba(20,33,61,.14);
+    box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){ --bg:#0E1626; --panel:#16213A; --ink:#F1F1EE; --muted:#9FB0C8; --border:rgba(241,241,238,.14); }
+  }
+  :root[data-theme="dark"]{ --bg:#0E1626; --panel:#16213A; --ink:#F1F1EE; --muted:#9FB0C8; --border:rgba(241,241,238,.14); }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px); height:100%;}
+  body{margin:0; min-height:100%; background:var(--bg); color:var(--ink);
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  header{padding:18px 20px 14px; border-bottom:1px solid var(--border);}
+  .brand{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  .brand h1{margin:0; font-size:1.25rem; letter-spacing:.2px;}
+  .brand span{color:var(--muted); font-size:.85rem;}
+  nav{display:flex; gap:6px; padding:12px 20px 0; overflow-x:auto;}
+  nav button{border:1px solid var(--border); background:var(--panel); color:var(--ink);
+    padding:8px 14px; border-radius:8px; font-size:.88rem; cursor:pointer; white-space:nowrap;}
+  nav button[aria-selected="true"]{background:var(--accent); border-color:var(--accent); color:#1a1400; font-weight:600;}
+  main{max-width:920px; margin:0 auto; padding:18px 20px 60px; display:grid; gap:16px;}
+  @media(min-width:760px){ main.grid2{grid-template-columns:1.1fr .9fr;} }
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px;}
+  .card h2{margin:0 0 10px; font-size:1rem;}
+  .muted{color:var(--muted); font-size:.85rem;}
+  .map-location-row{display:flex; align-items:end; gap:8px; flex-wrap:wrap; margin:10px 0;}
+  .map-location-row label{display:flex; flex:1 1 220px; flex-direction:column; gap:5px; color:var(--muted); font-size:.78rem;}
+  .map-location-row input{width:100%; min-width:180px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit;}
+  .map-shell{position:relative; height:360px; min-height:280px; overflow:hidden; border:1px solid var(--border); border-radius:10px; background:#e8edf3;}
+  .google-map{display:block; width:100%; height:100%; border:0;}
+  .map-overlay{position:absolute; inset:0; pointer-events:none;}
+  .map-route-svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible;}
+  .map-route-svg path{fill:none; stroke:#f5b700; stroke-width:13; stroke-linecap:round; stroke-linejoin:round; opacity:.88; filter:drop-shadow(0 1px 2px rgba(20,33,61,.55));}
+  .map-endpoint,.map-bus-marker{position:absolute; z-index:2; transform:translate(-50%,-50%); display:flex; align-items:center; gap:4px; padding:5px 8px; border:2px solid #fff; border-radius:999px; box-shadow:0 2px 8px rgba(20,33,61,.3); white-space:nowrap; font-size:18px;}
+  .map-endpoint{background:#fff; font-size:14px;}
+  .map-endpoint.home{left:9%; top:82%;} .map-endpoint.school{left:91%; top:20%;}
+  .map-bus-marker{left:10%; top:82%; z-index:3; background:var(--accent); font-size:20px; transition:left .15s linear, top .15s linear;}
+  .map-bus-marker span{font-size:11px; font-weight:700; color:#1a1400;}
+  .map-live-badge{position:absolute; z-index:4; top:10px; left:10px; display:flex; align-items:center; gap:5px; padding:5px 9px; border-radius:999px; background:rgba(20,33,61,.9); color:#fff; font-size:.72rem; font-weight:700; letter-spacing:.3px;}
+  .map-caption{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-top:8px;}
+  .map-caption .muted{margin:0;}
+  .map-caption a{color:var(--muted); font-size:.82rem;}
+  .map-center-overlay{position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;}
+  .map-location-hint{max-width:82%; padding:9px 12px; border-radius:9px; background:rgba(20,33,61,.9); color:#fff; text-align:center; font-size:.84rem; box-shadow:0 2px 8px rgba(20,33,61,.22);}
+  .map-bus-marker{left:50%; top:50%; z-index:3; background:var(--accent); font-size:22px;}
+  .map-bus-marker.stopped{background:#d6dbe4;}
+  #busMapMarker[hidden]{display:none;}
+  .gps-coordinates{margin:4px 0 0; font-size:.8rem; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .gps-share-note{padding:10px 12px; margin-top:10px; border-radius:8px; background:rgba(245,183,0,.1); color:var(--muted); font-size:.82rem; line-height:1.45;}
+  .gps-share-note strong{color:var(--ink);}
+  .share-duration-label{display:flex; flex:1 1 220px; flex-direction:column; gap:5px; color:var(--muted); font-size:.78rem;}
+  .share-duration-label select{width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit;}
+  .share-link-label{display:flex; flex:1 1 280px; flex-direction:column; gap:5px; color:var(--muted); font-size:.78rem;}
+  .share-link-label input{width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit;}
+  .parent-join-link{flex:1 1 320px;}
+  #firebaseShareRow[hidden]{display:none;}
+  .map-location-row input:disabled{opacity:.65;}
+  .btn:disabled{opacity:.55; cursor:not-allowed;}
+  .live-dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--alert);
+    margin-right:6px; animation:pulse 1.4s ease-in-out infinite;}
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+  .cam{background:#0b1220; color:#cdd6e4; border-radius:8px; aspect-ratio:16/9; display:flex;
+    flex-direction:column; align-items:center; justify-content:center; gap:6px; position:relative;}
+  .cam .badge{position:absolute; top:10px; left:10px; background:rgba(214,69,80,.9); color:#fff;
+    font-size:.72rem; padding:3px 8px; border-radius:999px; display:flex; align-items:center;}
+  .feed{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto;}
+  .feed li{border-left:3px solid var(--accent); padding:6px 10px; font-size:.88rem; background:rgba(245,183,0,.07); border-radius:0 6px 6px 0;}
+  .feed li.alert{border-color:var(--alert); background:rgba(214,69,80,.08);}
+  .feed li time{display:block; color:var(--muted); font-size:.75rem; margin-top:2px;}
+  .rollcall-list{max-height:440px; overflow-y:auto; padding-right:6px;}
+  .table-scroll{max-height:440px; overflow:auto;}
+  .btn{background:var(--accent); color:#1a1400; border:none; padding:9px 14px; border-radius:8px;
+    font-weight:600; font-size:.88rem; cursor:pointer;}
+  .btn.secondary{background:transparent; border:1px solid var(--border); color:var(--ink); font-weight:500;}
+  .btn.alert{background:var(--alert); color:#fff;}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px;}
+  select{padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--ink);}
+  table{width:100%; border-collapse:collapse; font-size:.88rem;}
+  th,td{text-align:left; padding:7px 6px; border-bottom:1px solid var(--border);}
+  .status{font-size:.78rem; padding:2px 8px; border-radius:999px; font-weight:600;}
+  .status.ok{background:rgba(46,139,87,.15); color:var(--good);}
+  .status.pending{background:rgba(91,107,133,.15); color:var(--muted);}
+  .status.miss{background:rgba(214,69,80,.15); color:var(--alert);}
+  label.check{display:flex; align-items:center; gap:8px; padding:6px 0; font-size:.9rem;}
+  .login-card{grid-column:1/-1; width:min(100%,680px); margin:0 auto;}
+  .login-role-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin:14px 0;}
+  .login-role-option{padding:12px; border:1px solid var(--border); border-radius:9px; background:var(--bg); color:var(--ink); text-align:left; font:inherit; cursor:pointer;}
+  .login-role-option[aria-pressed="true"]{border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent);}
+  .login-form{display:grid; gap:10px; margin-top:16px;}
+  .login-form label{display:grid; gap:5px; color:var(--muted); font-size:.82rem;}
+  .login-form input{width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit;}
+  .login-note{margin:12px 0 0; line-height:1.5;}
+  .login-error{padding:10px 12px; border-radius:8px; background:rgba(214,69,80,.12); color:var(--alert); font-size:.85rem;}
+  .login-success{padding:10px 12px; border-radius:8px; background:rgba(46,139,87,.12); color:var(--good); font-size:.85rem; line-height:1.5;}
+  .activity-list{display:grid; gap:8px; padding:0; margin:0; list-style:none;}
+  .activity-list li{padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg);}
+  .activity-list strong{display:block; margin-bottom:3px;}
+  .activity-list time{display:block; margin-top:5px; color:var(--muted); font-size:.76rem;}
+  .activity-message{white-space:pre-wrap; overflow-wrap:anywhere;}
+  .parent-update-form{display:grid; gap:9px; margin-top:10px;}
+  .parent-update-form textarea{width:100%; min-height:90px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; resize:vertical;}
+  section[hidden]{display:none;}
+
+  /* Colorful anime-inspired school-trip theme */
+  :root,
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]){
+    --bg:#fff6fc; --panel:rgba(255,255,255,.9); --ink:#30224f; --muted:#756987;
+    --accent:#ffd45c; --good:#269a79; --alert:#f05d82; --border:rgba(116,82,167,.17);
+    --pink:#ff83c4; --violet:#9a7cff; --sky:#75c9ff; --mint:#83e0c2;
+  }
+  html{background:#fff6fc; scroll-behavior:smooth;}
+  body{
+    position:relative; isolation:isolate; overflow-x:hidden;
+    background:
+      radial-gradient(ellipse at 12% 5%,rgba(255,174,218,.31),transparent 32rem),
+      radial-gradient(ellipse at 92% 18%,rgba(162,205,255,.34),transparent 34rem),
+      linear-gradient(145deg,#fff7fb 0%,#f6f4ff 48%,#f0fbff 100%);
+    color:var(--ink); font-family:"Trebuchet MS","Segoe UI",ui-sans-serif,system-ui,sans-serif;
+  }
+  body::before,body::after{
+    content:""; position:fixed; z-index:-1; width:260px; height:260px; border-radius:50%;
+    filter:blur(28px); opacity:.36; pointer-events:none; animation:anime-orb 12s ease-in-out infinite alternate;
+  }
+  body::before{top:18%; left:-155px; background:radial-gradient(circle,#ff9fd1 0%,rgba(255,159,209,0) 70%);}
+  body::after{right:-150px; bottom:3%; background:radial-gradient(circle,#9fd8ff 0%,rgba(159,216,255,0) 70%); animation-delay:-5s;}
+  @keyframes anime-orb{from{transform:translateY(-10px) scale(.94)}to{transform:translateY(18px) scale(1.08)}}
+  header{
+    position:relative; z-index:1; isolation:isolate; overflow:hidden;
+    padding:22px max(22px,calc((100vw - 1080px)/2)) 18px;
+    border-bottom:1px solid rgba(116,82,167,.14);
+    background:linear-gradient(105deg,rgba(255,255,255,.92),rgba(255,243,251,.82) 48%,rgba(239,248,255,.9));
+    box-shadow:0 8px 28px rgba(104,78,147,.08); backdrop-filter:blur(14px);
+  }
+  header::after{
+    content:"✦  ✧  ✦"; position:absolute; z-index:-1; top:13px; right:max(24px,calc((100vw - 1080px)/2));
+    color:rgba(154,124,255,.4); font-size:28px; letter-spacing:12px; transform:rotate(-8deg);
+  }
+  .brand{align-items:center; gap:12px;}
+  .brand h1{
+    color:#6e4fc8; font-size:clamp(1.5rem,4vw,2rem); letter-spacing:.3px;
+    text-shadow:0 2px 0 #fff,0 5px 18px rgba(154,124,255,.2);
+  }
+  .brand span{color:#74658d; font-size:.94rem; font-weight:600;}
+  nav{
+    position:sticky; top:0; z-index:5; display:flex; justify-content:center; gap:9px;
+    padding:13px 16px 11px; overflow-x:auto; background:rgba(255,248,253,.8);
+    border-bottom:1px solid rgba(116,82,167,.1); backdrop-filter:blur(16px);
+  }
+  nav button{
+    border:1px solid rgba(133,109,184,.2); background:rgba(255,255,255,.88); color:#53456e;
+    padding:10px 17px; border-radius:999px; font-size:.9rem; font-weight:700;
+    box-shadow:0 3px 10px rgba(98,76,137,.07); transition:transform .18s ease,box-shadow .18s ease,background .18s ease;
+  }
+  nav button:hover{transform:translateY(-2px); box-shadow:0 7px 15px rgba(98,76,137,.14);}
+  nav button[aria-selected="true"]{
+    color:#342150; border-color:transparent; font-weight:800;
+    background:linear-gradient(110deg,#ffe47a,#ffc6e3 58%,#d8c8ff);
+    box-shadow:0 5px 16px rgba(235,143,190,.25);
+  }
+  main{position:relative; z-index:1; max-width:1080px; padding:24px 20px 72px; gap:18px;}
+  @media(min-width:760px){main.grid2{grid-template-columns:minmax(0,1.08fr) minmax(300px,.92fr);}}
+  .card{
+    position:relative; overflow:hidden; padding:19px; border:1px solid rgba(125,97,175,.16);
+    border-radius:20px; background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(255,250,255,.88));
+    box-shadow:0 12px 30px rgba(86,66,125,.09),inset 0 1px 0 rgba(255,255,255,.95);
+    transition:transform .2s ease,box-shadow .2s ease;
+  }
+  .card:hover{transform:translateY(-2px); box-shadow:0 16px 34px rgba(86,66,125,.13),inset 0 1px 0 #fff;}
+  .card h2{display:flex; align-items:center; gap:8px; margin:0 0 12px; color:#5941a1; font-size:1.07rem; font-weight:800;}
+  .card h2::before{content:"✦"; color:#ff91c9; font-size:.92em; text-shadow:0 2px 8px rgba(255,145,201,.35);}
+  .muted{color:#766b8a; line-height:1.55;}
+  input,select,textarea{
+    border-color:rgba(124,101,171,.22)!important; border-radius:12px!important;
+    background:rgba(255,255,255,.86)!important; color:#30224f!important;
+    box-shadow:inset 0 1px 2px rgba(71,54,107,.04);
+  }
+  input:focus,select:focus,textarea:focus{outline:3px solid rgba(154,124,255,.23); border-color:#9a7cff!important;}
+  .btn{
+    border:1px solid rgba(255,255,255,.75); border-radius:999px; padding:10px 17px;
+    background:linear-gradient(110deg,#ffdb62,#ffb4d9); color:#38254e; font-weight:800;
+    box-shadow:0 5px 12px rgba(239,158,113,.18); transition:transform .16s ease,filter .16s ease,box-shadow .16s ease;
+  }
+  .btn:hover:not(:disabled){transform:translateY(-2px) scale(1.015); filter:saturate(1.12); box-shadow:0 9px 18px rgba(210,127,174,.22);}
+  .btn.secondary{border:1px solid rgba(133,109,184,.24); background:rgba(255,255,255,.76); color:#614c85; box-shadow:none;}
+  .btn.alert{background:linear-gradient(110deg,#ff7896,#f15e83); color:#fff;}
+  .map-shell{height:390px; border:3px solid #fff; border-radius:18px; background:linear-gradient(135deg,#dff6ff,#f9eaff); box-shadow:0 8px 22px rgba(74,92,137,.12);}
+  .map-missing{height:100%; display:grid; place-items:center; padding:20px; box-sizing:border-box; color:#584477; text-align:center; line-height:1.5; background:linear-gradient(135deg,#e7f8ff,#faedff);}
+  .map-route-svg path{stroke:#ffcc4d; stroke-width:15; filter:drop-shadow(0 2px 4px rgba(114,76,153,.35));}
+  .map-endpoint,.map-bus-marker{box-shadow:0 5px 13px rgba(48,34,79,.24);}
+  .map-endpoint{border-color:#fff; background:#fff6fc;}
+  .map-bus-marker{border-color:#fff; background:linear-gradient(135deg,#ffdf63,#ff91c9);}
+  .map-live-badge{border:1px solid rgba(255,255,255,.3); border-radius:999px; background:linear-gradient(110deg,#6d55be,#a376db); box-shadow:0 5px 14px rgba(79,56,139,.22);}
+  .map-location-hint{border:1px solid rgba(255,255,255,.45); border-radius:14px; background:rgba(65,49,106,.9); box-shadow:0 8px 22px rgba(39,28,71,.25);}
+  .gps-share-note{border:1px solid rgba(255,199,82,.35); border-radius:14px; background:linear-gradient(110deg,rgba(255,226,130,.28),rgba(255,194,226,.25));}
+  .cam{border:2px solid rgba(255,255,255,.85); border-radius:18px; background:radial-gradient(circle at 50% 38%,#6555a7,#29254c 72%); box-shadow:inset 0 0 35px rgba(255,145,201,.14);}
+  .feed li{border-left:4px solid #ff91c9; border-radius:0 12px 12px 0; background:linear-gradient(100deg,rgba(255,190,225,.2),rgba(220,208,255,.18)); padding:9px 12px;}
+  .feed li.alert{border-color:#f05d82; background:linear-gradient(100deg,rgba(255,156,179,.22),rgba(255,230,233,.42));}
+  .status{padding:4px 10px; border-radius:999px;}
+  .status.ok{background:rgba(131,224,194,.28); color:#167459;}
+  .status.pending{background:rgba(194,178,237,.23); color:#6b5790;}
+  .status.miss{background:rgba(255,139,166,.2); color:#bd3d60;}
+  .activity-list li{border-radius:14px; background:linear-gradient(130deg,rgba(255,255,255,.92),rgba(247,242,255,.72));}
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{scroll-behavior:auto!important; animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>🚌 GOMAPs</h1><span>School bus tracking — interactive prototype</span></div>
+</header>
+<nav id="tabs"></nav>
+<main id="main" class="grid2"></main>
+
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
+<script>
+// Paste the web app values from Firebase Console > Project settings > Your apps.
+const firebaseConfig = {
+  apiKey: "AIzaSyAqQxEU268WzkCnwjCrwU_k4APu1VqkKbM",
+  authDomain: "gomaps-1.firebaseapp.com",
+  databaseURL: "https://gomaps-1-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "gomaps-1",
+  appId: "1:1070540958330:web:0de87a348d84d90d74e9c3"
+};
+// Create a separate, website-restricted key for the Maps Embed API; do not reuse the Firebase key.
+const GOOGLE_MAPS_EMBED_API_KEY = "";
+// Location links use their own narrow rules; parent review/activity sync stays disabled.
+const FIREBASE_LOCATION_SHARING_ENABLED = true;
+const FIREBASE_PARENT_REVIEW_SYNC_ENABLED = false;
+const FIREBASE_ACTIVITY_SYNC_ENABLED = false;
+const FIREBASE_MAX_SHARE_HOURS = 8;
+const FIREBASE_WRITE_INTERVAL_MS = 5000;
+const FIREBASE_SESSION_PATH = "busLocations";
+const students = Array.from({length:30}, (_, index) => {
+  const number = String(index + 1).padStart(2, "0");
+  return {id:index + 1, name:`Student ${number}`, parent:`Student ${number}'s parent`};
+});
+const initialQuery = new URLSearchParams(window.location.search);
+const state = {
+  role: "driver",
+  authenticated: false,
+  selectedLoginRole: initialQuery.get("join") === "parent" ? "parent" : "",
+  signupMode: initialQuery.get("join") === "parent",
+  loginEmail: "",
+  loginError: "",
+  loginNotice: initialQuery.get("join") === "parent" ? "You were invited to join GOMAPs as a parent. Create an account below; school approval is required before viewing student or bus data." : "",
+  parentInviteNotice: "",
+  parentUpdateNotice: "",
+  parentApplications: [],
+  managementActivity: [],
+  managementDataError: "",
+  loginBusy: false,
+  mapPlace: "Lucknow, India",
+  busLocation: null,
+  busSharing: false,
+  shareDurationMinutes: 60,
+  locationError: "",
+  locationNotice: "",
+  firebaseStatus: "Ready to connect when Driver starts sharing.",
+  remoteShareId: "",
+  remoteShareLink: "",
+  remoteShareExpiresAt: 0,
+  remoteReadOnly: false,
+  notifications: [],
+  arrivedAtSchool: false,
+  boarded: {}, // studentId -> true/false after roll call
+  droppedHome: {},
+};
+students.forEach(s => state.boarded[s.id] = null); // null = not checked yet
+
+let locationWatchId = null;
+let lastMapRefreshAt = 0;
+let firebaseAuth = null;
+let firebaseDatabase = null;
+let firebaseUser = null;
+let firebaseShareRef = null;
+let firebaseListenerRef = null;
+let creatingFirebaseShare = false;
+let lastFirebaseWriteAt = 0;
+let firebaseExpiryTimer = null;
+let managementApplicationsRef = null;
+let managementActivityRef = null;
+let managementListenerUid = "";
+
+function timeNow(){ return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function addNotification(text, type="info"){
+  state.notifications.unshift({text, type, t: timeNow()});
+  render();
+}
+
+const roles = [
+  {id:"parent", label:"Parent"},
+  {id:"driver", label:"Driver"},
+  {id:"conductor", label:"Conductor"},
+  {id:"management", label:"School Management"},
+];
+
+function renderTabs(){
+  const nav = document.getElementById("tabs");
+  nav.hidden = false;
+  const visibleRoles = state.remoteReadOnly ? roles.filter(r => r.id === "parent") : roles;
+  nav.innerHTML = visibleRoles.map(r =>
+    `<button aria-selected="${state.role===r.id}" onclick="setRole('${r.id}')">${r.label}</button>`
+  ).join("") + (state.remoteReadOnly || !state.authenticated ? "" : `<button class="btn secondary" style="margin-left:auto;" onclick="signOutFromApp()">Sign out</button>`);
+}
+function setRole(id){
+  if(state.remoteReadOnly && id !== "parent") return;
+  state.role = id;
+  render();
+}
+function selectLoginRole(id){
+  if(!roles.some(role => role.id === id)) return;
+  state.selectedLoginRole = id;
+  state.signupMode = false;
+  state.loginError = "";
+  state.loginNotice = "";
+  render();
+}
+function setParentSignupMode(enabled){
+  if(state.selectedLoginRole !== "parent") return;
+  state.signupMode = !!enabled;
+  state.loginError = "";
+  state.loginNotice = "";
+  render();
+}
+function openParentSignup(){
+  state.selectedLoginRole = "parent";
+  state.signupMode = true;
+  state.loginError = "";
+  state.loginNotice = "Create a parent account. The school must verify your student relationship before granting access.";
+  render();
+}
+function renderLogin(){
+  const selected = roles.find(role => role.id === state.selectedLoginRole);
+  const parentJoinURL = buildParentJoinURL();
+  const choices = roles.map(role => `<button type="button" class="login-role-option" aria-pressed="${state.selectedLoginRole===role.id}" onclick="selectLoginRole('${role.id}')">${role.label}</button>`).join("");
+  const signup = state.signupMode && selected?.id === "parent";
+  return `<section class="card login-card">
+    <h2>${signup ? "Parent sign up" : "Sign in to GOMAPs"}</h2>
+    <p class="muted">${signup ? "Create a parent account with your email. The school must verify your relationship to a student and approve access." : "Choose the account type assigned by your school."}</p>
+    <div class="login-role-grid">${choices}</div>
+    ${selected ? `<form class="login-form" onsubmit="${signup ? "signupParentWithFirebase" : "loginWithFirebase"}(event)">
+      <h3 style="margin:0;">${signup ? "Create parent account" : `${escapeHTML(selected.label)} login`}</h3>
+      <label for="loginEmail">${selected.id === "management" ? "Management ID" : "Email address"}<input id="loginEmail" name="${selected.id === "management" ? "username" : "email"}" type="${selected.id === "management" ? "text" : "email"}" autocomplete="username" autocapitalize="none" ${selected.id === "management" ? `placeholder="School-issued ID"` : ""} required value="${escapeHTML(state.loginEmail)}"></label>
+      ${signup ? `<label for="signupParentName">Parent/guardian name<input id="signupParentName" name="parentName" type="text" autocomplete="name" maxlength="100" required></label>
+      <label for="signupStudentName">Student full name<input id="signupStudentName" name="studentName" type="text" maxlength="100" required></label>
+      <label for="signupStudentId">Student ID or enrollment number<input id="signupStudentId" name="studentId" type="text" maxlength="40" required></label>
+      <label for="signupBusRoute">Bus route or bus number (optional)<input id="signupBusRoute" name="busRoute" type="text" maxlength="40"></label>` : ""}
+      <label for="loginPassword">Password<input id="loginPassword" name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" minlength="${signup ? "8" : "1"}" required></label>
+      ${signup ? `<label for="loginPasswordConfirm">Confirm password<input id="loginPasswordConfirm" name="passwordConfirm" type="password" autocomplete="new-password" minlength="8" required></label>` : ""}
+      <p class="login-error" role="alert" ${state.loginError ? "" : "hidden"}>${escapeHTML(state.loginError)}</p>
+      <p class="login-success" role="status" ${state.loginNotice ? "" : "hidden"}>${escapeHTML(state.loginNotice)}</p>
+      <button class="btn" id="loginSubmit" type="submit" ${state.loginBusy ? "disabled" : ""}>${state.loginBusy ? (signup ? "Creating account…" : "Signing in…") : (signup ? "Create parent account" : "Sign in")}</button>
+      ${selected.id === "parent" ? `<button class="btn secondary" type="button" onclick="setParentSignupMode(${!signup})">${signup ? "Already registered? Sign in" : "New parent? Create an account"}</button>` : ""}
+      <p class="muted login-note">${signup ? "Firebase Email/Password must be enabled. Creating an account does not grant access: school management must verify and approve the parent account first." : (selected.id === "management" ? "Use the school-issued management ID and password. The school must provision this ID as a Firebase account and assign its Management role securely." : "Use an account created or approved by school management. Email/Password must be enabled in Firebase, and the school must assign your account an approved role.")}</p>
+    </form>` : `<p class="muted login-note">Select Parent, Driver, Conductor, or School Management to continue.</p>`}
+    <div class="row" style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+      ${signup ? "" : `<button class="btn secondary" type="button" onclick="openParentSignup()">Parent sign up</button>`}
+      ${parentJoinURL ? `<label class="share-link-label parent-join-link" for="parentJoinLink">Parent sign-up link<input id="parentJoinLink" value="${escapeHTML(parentJoinURL)}" readonly></label><button class="btn secondary" type="button" onclick="shareParentJoinLink()">Share link…</button><button class="btn secondary" type="button" onclick="copyParentJoinLink()">Copy link</button>` : `<p class="muted login-note">Once GOMAPs is hosted over HTTPS, parents can use a shareable sign-up link here.</p>`}
+    </div>
+    <p class="muted" id="parentInviteStatus" role="status">${escapeHTML(state.parentInviteNotice)}</p>
+    <p class="muted login-note">Access is granted only when Firebase confirms the selected role on the signed-in account. Parent sign-up does not grant access; the school must verify and approve the account. Parent live-location links open separately.</p>
+  </section>`;
+}
+function loginErrorText(error){
+  if(error && error.code === "auth/operation-not-allowed") return "Email/password sign-in is not enabled in Firebase Authentication yet.";
+  if(error && ["auth/invalid-credential","auth/wrong-password","auth/user-not-found"].includes(error.code)) return "The email or password was not accepted.";
+  if(error && error.code === "auth/network-request-failed") return "Could not reach Firebase. Check the internet connection and try again.";
+  return error && error.message ? error.message : "Sign-in failed. Try again or contact school management.";
+}
+function signupErrorText(error){
+  if(error && error.code === "auth/operation-not-allowed") return "Email/password sign-up is not enabled in Firebase Authentication yet.";
+  if(error && error.code === "auth/email-already-in-use") return "An account already exists for this email. Use Parent sign in instead.";
+  if(error && error.code === "auth/invalid-email") return "Enter a valid email address.";
+  if(error && error.code === "auth/weak-password") return "Choose a stronger password with at least 8 characters.";
+  if(error && error.code === "auth/network-request-failed") return "Could not reach Firebase. Check the internet connection and try again.";
+  return error && error.message ? error.message : "Could not create the account. Try again or contact school management.";
+}
+async function loginWithFirebase(event){
+  event.preventDefault();
+  if(state.loginBusy) return;
+  const loginId = (document.getElementById("loginEmail")?.value || "").trim();
+  const password = document.getElementById("loginPassword")?.value || "";
+  if(!state.selectedLoginRole){ state.loginError = "Choose your account type first."; render(); return; }
+  if(!firebaseHostedPageReady()){
+    state.loginError = "Sign-in requires the website to be hosted on HTTPS.";
+    render();
+    return;
+  }
+  state.loginEmail = loginId;
+  state.loginError = "";
+  state.loginBusy = true;
+  const submit = document.getElementById("loginSubmit");
+  if(submit){ submit.disabled = true; submit.textContent = "Signing in…"; }
+  try{
+    const {auth} = initializeFirebaseServices();
+    const authEmail = state.selectedLoginRole === "management" ? managementIdToAuthEmail(loginId) : loginId;
+    const credential = await auth.signInWithEmailAndPassword(authEmail, password);
+    const token = await credential.user.getIdTokenResult(true);
+    const assignedRole = token.claims.gomapsRole;
+    const role = roles.find(item => item.id === assignedRole);
+    if(!role){
+      await auth.signOut();
+      throw new Error("This account does not have an approved school role yet. Contact school management.");
+    }
+    if(assignedRole !== state.selectedLoginRole){
+      await auth.signOut();
+      throw new Error(`This account is assigned to ${role.label}. Choose that role and sign in again.`);
+    }
+    firebaseUser = credential.user;
+    state.authenticated = true;
+    state.role = assignedRole;
+    state.loginError = "";
+    state.loginNotice = "";
+    state.loginBusy = false;
+    render();
+  }catch(error){
+    state.loginBusy = false;
+    state.loginError = loginErrorText(error);
+    render();
+  }
+}
+function managementIdToAuthEmail(identifier){
+  const username = String(identifier || "").trim().toLowerCase().replace(/^@+/, "");
+  if(!/^[a-z0-9._-]{3,50}$/.test(username)) throw new Error("Enter the school-issued Management ID (letters, numbers, dots, underscores, or hyphens)." );
+  return `${username}+management@gomaps-1.firebaseapp.com`;
+}
+async function signupParentWithFirebase(event){
+  event.preventDefault();
+  if(state.loginBusy || state.selectedLoginRole !== "parent") return;
+  const email = (document.getElementById("loginEmail")?.value || "").trim();
+  const parentName = (document.getElementById("signupParentName")?.value || "").trim();
+  const studentName = (document.getElementById("signupStudentName")?.value || "").trim();
+  const studentId = (document.getElementById("signupStudentId")?.value || "").trim();
+  const busRoute = (document.getElementById("signupBusRoute")?.value || "").trim();
+  const password = document.getElementById("loginPassword")?.value || "";
+  const confirmation = document.getElementById("loginPasswordConfirm")?.value || "";
+  if(!firebaseHostedPageReady()){
+    state.loginError = "Parent sign-up requires the website to be hosted on HTTPS.";
+    render();
+    return;
+  }
+  if(password.length < 8){ state.loginError = "Choose a password with at least 8 characters."; render(); return; }
+  if(password !== confirmation){ state.loginError = "The passwords do not match."; render(); return; }
+  if(!parentName || !studentName || !studentId){ state.loginError = "Enter the parent name, student name, and student ID."; render(); return; }
+  state.loginEmail = email;
+  state.loginError = "";
+  state.loginNotice = "";
+  state.loginBusy = true;
+  const submit = document.getElementById("loginSubmit");
+  if(submit){ submit.disabled = true; submit.textContent = "Creating account…"; }
+  let auth = null;
+  let database = null;
+  let credential = null;
+  let applicationSaved = false;
+  try{
+    ({auth, database} = initializeFirebaseServices());
+    credential = await auth.createUserWithEmailAndPassword(email, password);
+    if(FIREBASE_PARENT_REVIEW_SYNC_ENABLED){
+      try{
+        await database.ref(`parentApplications/${credential.user.uid}`).set({
+          uid:credential.user.uid,
+          email:credential.user.email || email,
+          parentName,
+          studentName,
+          studentId,
+          busRoute,
+          role:"parent",
+          status:"pending",
+          createdAt:firebase.database.ServerValue.TIMESTAMP
+        });
+        applicationSaved = true;
+      }catch(applicationError){
+        console.warn("Parent account was created, but the review request could not be saved.", applicationError && applicationError.code);
+      }
+    }
+    let verificationSent = true;
+    try{ await credential.user.sendEmailVerification(); }
+    catch(error){ verificationSent = false; }
+    await auth.signOut();
+    firebaseUser = null;
+    state.signupMode = false;
+    state.loginNotice = applicationSaved
+      ? (verificationSent
+        ? "Account and parent request submitted. Check your email to verify it. School management must confirm your student and approve access before you can see school data."
+        : "Account and parent request submitted, but Firebase could not send the verification email. Contact school management to verify your account and approve access.")
+      : "Account created, but the parent request did not reach the school's review list because Firebase syncing is not enabled yet. Check your email, then contact school management to confirm your student and approve access.";
+  }catch(error){
+    if(auth && auth.currentUser){ try{ await auth.signOut(); }catch(signOutError){} }
+    firebaseUser = null;
+    state.loginError = signupErrorText(error);
+  }finally{
+    state.loginBusy = false;
+    render();
+  }
+}
+async function signOutFromApp(){
+  if(state.busSharing){
+    state.firebaseStatus = "Stop live location before signing out.";
+    updateLiveLocationUI();
+    return;
+  }
+  try{
+    if(firebaseAuth && firebaseAuth.currentUser) await firebaseAuth.signOut();
+    firebaseUser = null;
+    state.authenticated = false;
+    state.selectedLoginRole = "";
+    state.loginEmail = "";
+    state.loginError = "";
+    state.role = "driver";
+    state.busLocation = null;
+    state.remoteShareId = "";
+    state.remoteShareLink = "";
+    state.remoteShareExpiresAt = 0;
+    render();
+  }catch(error){
+    state.firebaseStatus = "Could not sign out: " + error.message;
+  }
+}
+
+function feedHTML(limit){
+  const items = state.notifications.slice(0, limit||20);
+  if(!items.length) return `<p class="muted">No notifications yet.</p>`;
+  return `<ul class="feed">${items.map(n =>
+    `<li class="${n.type==='alert'?'alert':''}">${n.text}<time>${n.t}</time></li>`).join("")}</ul>`;
+}
+
+function escapeHTML(value){
+  const entities = {"&":"&amp;","<":"&lt;",">":"&gt;",[String.fromCharCode(34)]:"&quot;","'":"&#39;"};
+  return String(value).replace(/[&<>"']/g, ch => entities[ch]);
+}
+function mapSearchTarget(){
+  return state.busLocation ? `${state.busLocation.latitude},${state.busLocation.longitude}` : state.mapPlace;
+}
+function googleMapEmbedURL(){
+  if(!GOOGLE_MAPS_EMBED_API_KEY.trim()) return "";
+  const zoom = state.busLocation ? 16 : 14;
+  const params = new URLSearchParams({key:GOOGLE_MAPS_EMBED_API_KEY.trim(), q:mapSearchTarget(), zoom:String(zoom)});
+  return `https://www.google.com/maps/embed/v1/place?${params.toString()}`;
+}
+function googleMapsLink(){
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapSearchTarget())}`;
+}
+function firebaseConfigurationReady(){
+  const values = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.databaseURL, firebaseConfig.projectId, firebaseConfig.appId];
+  return values.every(value => typeof value === "string" && value && !/^(PASTE_|YOUR_)/.test(value));
+}
+function firebaseHostedPageReady(){
+  return location.protocol === "https:" && !!location.hostname;
+}
+function firebaseSetupStatus(){
+  if(!firebaseConfigurationReady()) return "Firebase is not connected yet. Add the web app config and database rules from the setup guide.";
+  if(!FIREBASE_LOCATION_SHARING_ENABLED) return "Singapore Realtime Database is ready, but remote bus location sharing is disabled. GPS can still run on this device.";
+  if(!firebaseHostedPageReady()) return "Remote sharing needs this page hosted on HTTPS (for example, Firebase Hosting). GPS can still run on this device.";
+  return state.firebaseStatus || "Firebase live-location sharing is ready. Start sharing from the Driver tab.";
+}
+function initializeFirebaseServices(){
+  if(!firebaseConfigurationReady()) throw new Error("Add your Firebase web app config first.");
+  if(!window.firebase || !firebase.auth || !firebase.database) throw new Error("Firebase SDK did not load. Check your internet connection.");
+  const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
+  firebaseAuth = firebase.auth(app);
+  firebaseDatabase = firebase.database(app);
+  return {auth:firebaseAuth, database:firebaseDatabase};
+}
+async function recordRoleActivity(type, message){
+  if(!state.authenticated || !firebaseUser) return false;
+  if(!FIREBASE_ACTIVITY_SYNC_ENABLED){
+    state.parentUpdateNotice = "Activity-feed sync is disabled in this live-location deployment; this update remains on this device.";
+    return false;
+  }
+  try{
+    const {database} = initializeFirebaseServices();
+    await database.ref("activity").push({
+      actorUid:firebaseUser.uid,
+      actorEmail:firebaseUser.email || "",
+      role:state.role,
+      type:String(type).slice(0,40),
+      message:String(message).slice(0,500),
+      createdAt:firebase.database.ServerValue.TIMESTAMP
+    });
+    return true;
+  }catch(error){
+    console.warn("Could not sync the role update to Firebase.", error && error.code);
+    state.parentUpdateNotice = "The update could not be sent to school management. Firebase rules may still need to be published.";
+    return false;
+  }
+}
+function stopManagementReviewListeners(){
+  if(managementApplicationsRef) managementApplicationsRef.off();
+  if(managementActivityRef) managementActivityRef.off();
+  managementApplicationsRef = null;
+  managementActivityRef = null;
+  managementListenerUid = "";
+}
+function startManagementReviewListeners(){
+  if(!state.authenticated || state.role !== "management" || !firebaseUser || !FIREBASE_ACTIVITY_SYNC_ENABLED){
+    stopManagementReviewListeners();
+    return;
+  }
+  if(managementListenerUid === firebaseUser.uid) return;
+  stopManagementReviewListeners();
+  try{
+    const {database} = initializeFirebaseServices();
+    managementListenerUid = firebaseUser.uid;
+    managementApplicationsRef = database.ref("parentApplications");
+    managementActivityRef = database.ref("activity").limitToLast(100);
+    managementApplicationsRef.on("value", snapshot => {
+      state.parentApplications = Object.values(snapshot.val() || {}).sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+      state.managementDataError = "";
+      render();
+    }, error => {
+      state.managementDataError = "Parent sign-up requests could not be loaded. Check the Firebase Management read rule.";
+      render();
+      console.warn("Parent application read denied.", error && error.code);
+    });
+    managementActivityRef.on("value", snapshot => {
+      state.managementActivity = Object.values(snapshot.val() || {}).sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+      state.managementDataError = "";
+      render();
+    }, error => {
+      state.managementDataError = "Role updates could not be loaded. Check the Firebase Management read rule.";
+      render();
+      console.warn("Activity read denied.", error && error.code);
+    });
+  }catch(error){
+    state.managementDataError = "Firebase review data is not connected yet.";
+  }
+}
+function displayActivityTime(value){
+  const date = Number(value) ? new Date(Number(value)) : null;
+  return date && Number.isFinite(date.getTime()) ? date.toLocaleString() : "Time pending";
+}
+async function submitParentUpdate(event){
+  event.preventDefault();
+  const input = document.getElementById("parentUpdateMessage");
+  const message = (input?.value || "").trim();
+  const status = document.getElementById("parentUpdateStatus");
+  if(!message){ state.parentUpdateNotice = "Write a short update before sending."; if(status) status.textContent = state.parentUpdateNotice; return; }
+  if(message.length > 500){ state.parentUpdateNotice = "Keep the update under 500 characters."; if(status) status.textContent = state.parentUpdateNotice; return; }
+  if(!FIREBASE_ACTIVITY_SYNC_ENABLED){
+    state.parentUpdateNotice = "Update not sent. Parent-to-management activity sync is not enabled in this live-location deployment.";
+    if(status) status.textContent = state.parentUpdateNotice;
+    return;
+  }
+  state.parentUpdateNotice = "Sending update…";
+  if(status) status.textContent = state.parentUpdateNotice;
+  const sent = await recordRoleActivity("parent_update", message);
+  if(sent) state.parentUpdateNotice = "Update sent to school management.";
+  const currentStatus = document.getElementById("parentUpdateStatus");
+  if(currentStatus) currentStatus.textContent = state.parentUpdateNotice;
+  if(sent && input) input.value = "";
+}
+async function ensureFirebaseAuth(){
+  const {auth, database} = initializeFirebaseServices();
+  if(!auth.currentUser){
+    const result = await auth.signInAnonymously();
+    firebaseUser = result.user;
+  }else{
+    firebaseUser = auth.currentUser;
+  }
+  return {auth, database, user:firebaseUser};
+}
+function generateShareToken(){
+  const bytes = new Uint8Array(24);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+function buildParentShareURL(shareId){
+  if(!firebaseHostedPageReady()) return "";
+  const url = new URL(window.location.href);
+  url.searchParams.set("share", shareId);
+  return url.href;
+}
+function buildParentJoinURL(){
+  if(!firebaseHostedPageReady()) return "";
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("join", "parent");
+  return url.href;
+}
+function setParentInviteNotice(message){
+  state.parentInviteNotice = message;
+  const status = document.getElementById("parentInviteStatus");
+  if(status) status.textContent = message;
+}
+async function copyParentJoinLink(){
+  const link = buildParentJoinURL();
+  if(!link){ setParentInviteNotice("Host GOMAPs on HTTPS before sharing a parent sign-up link."); return; }
+  try{
+    await navigator.clipboard.writeText(link);
+    setParentInviteNotice("Parent sign-up link copied. Send it to the intended parents; school approval is still required.");
+  }catch(error){
+    const input = document.getElementById("parentJoinLink");
+    if(input){ input.focus(); input.select(); setParentInviteNotice("Link selected. Copy it and send it to the intended parents; school approval is still required."); }
+    else setParentInviteNotice("Could not copy the link. Try again from the hosted HTTPS site.");
+  }
+}
+async function shareParentJoinLink(){
+  const link = buildParentJoinURL();
+  if(!link){ setParentInviteNotice("Host GOMAPs on HTTPS before sharing a parent sign-up link."); return; }
+  if(navigator.share){
+    try{
+      await navigator.share({title:"Join GOMAPs as a parent", text:"Create a parent account for GOMAPs. The school will verify and approve access.", url:link});
+      setParentInviteNotice("Parent sign-up link shared. School approval is required before account access.");
+      return;
+    }catch(error){
+      if(error.name === "AbortError") return;
+      setParentInviteNotice("Could not open the share sheet. Use Copy link instead.");
+      return;
+    }
+  }
+  await copyParentJoinLink();
+}
+function remoteStatusText(){
+  if(state.remoteReadOnly || state.role === "driver") return state.firebaseStatus;
+  return firebaseSetupStatus();
+}
+function sharingScopeText(){
+  if(state.remoteReadOnly) return "Read-only parent view. The bus device controls when location sharing starts and stops.";
+  if(state.remoteShareLink) return `Private parent link: anyone who receives it can view this bus until ${new Date(state.remoteShareExpiresAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}. Share only with intended parents.`;
+  return "After Firebase setup and HTTPS hosting, the Driver can create a private live-location link for parents.";
+}
+function shareDurationLabel(minutes){
+  if(minutes === 15) return "15 minutes";
+  if(minutes === 60) return "1 hour";
+  if(minutes === FIREBASE_MAX_SHARE_HOURS * 60) return `${FIREBASE_MAX_SHARE_HOURS} hours`;
+  return `${minutes} minutes`;
+}
+function locationStatusText(){
+  if(state.locationError) return state.locationError;
+  if(state.busSharing && state.locationNotice){
+    if(state.busLocation) return `${state.locationNotice} Last fix ${new Date(state.busLocation.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}.`;
+    return state.locationNotice;
+  }
+  if(state.busSharing && !state.busLocation) return "Waiting for the device to get a GPS fix…";
+  if(state.busSharing && state.busLocation) return `LIVE GPS · updated ${new Date(state.busLocation.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}`;
+  if(state.busLocation) return `Sharing stopped · last fix ${new Date(state.busLocation.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}`;
+  return "No live bus location yet. Start sharing from the Driver tab.";
+}
+function locationCoordinatesText(){
+  if(!state.busLocation) return "GPS coordinates will appear here after permission is granted.";
+  return `${state.busLocation.latitude.toFixed(5)}, ${state.busLocation.longitude.toFixed(5)} · accuracy ±${Math.round(state.busLocation.accuracy)} m`;
+}
+function routeHTML(canControl=false){
+  const place = escapeHTML(state.mapPlace);
+  const hasFix = !!state.busLocation;
+  const badgeText = state.locationError ? "GPS ERROR" : state.locationNotice ? (hasFix ? "GPS DELAYED" : "GPS STARTING") : state.busSharing ? (hasFix ? "LIVE GPS" : "GPS STARTING") : hasFix ? "LAST GPS FIX" : "GPS NOT SHARING";
+  const badgeColor = state.locationError ? "#ff6973" : state.busSharing && hasFix && !state.locationNotice ? "#47d17c" : state.busSharing ? "#ffbf47" : "#ff6973";
+  const marker = hasFix ? `<div id="busMapMarker" class="map-bus-marker ${state.busSharing ? "" : "stopped"}">${String.fromCodePoint(0x1F68C)} <span>BUS 01</span></div>` : `<div id="busMapMarker" class="map-bus-marker" hidden>${String.fromCodePoint(0x1F68C)} <span>BUS 01</span></div>`;
+  const mapURL = googleMapEmbedURL();
+  const mapFrame = mapURL
+    ? `<iframe id="googleMapFrame" class="google-map" title="Google Map showing the bus device location" src="${escapeHTML(mapURL)}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`
+    : `<div class="map-missing" role="status">Google Maps preview needs a restricted Maps Embed API key. ${hasFix ? "Your latest GPS fix is ready." : "The bus device location will appear here after GPS starts."} Use <strong>Open in Google Maps</strong> to open the current area or live coordinates.</div>`;
+  const controls = canControl ? `<div class="row">
+      <label class="share-duration-label">Share live location for
+        <select id="shareDurationSelect" onchange="setShareDuration(this.value)" ${state.busSharing ? "disabled" : ""}>
+          <option value="15" ${state.shareDurationMinutes === 15 ? "selected" : ""}>15 minutes</option>
+          <option value="60" ${state.shareDurationMinutes === 60 ? "selected" : ""}>1 hour</option>
+          <option value="${FIREBASE_MAX_SHARE_HOURS * 60}" ${state.shareDurationMinutes === FIREBASE_MAX_SHARE_HOURS * 60 ? "selected" : ""}>${FIREBASE_MAX_SHARE_HOURS} hours</option>
+        </select>
+      </label>
+      <button id="startLocationButton" class="btn" onclick="startLocationSharing()" ${state.busSharing ? "disabled" : ""}>Start live location</button>
+      <button id="stopLocationButton" class="btn secondary" onclick="stopLocationSharing()" ${state.busSharing ? "" : "disabled"}>Stop sharing</button>
+    </div>
+    <p class="muted" style="margin-top:8px;">This shares GPS from this device, so keep it on the bus. Allow location access and keep this page open during the trip.</p>` : "";
+  const firebasePanel = canControl ? `<div class="gps-share-note"><strong>Firebase:</strong> <span id="firebaseStatusText">${escapeHTML(firebaseSetupStatus())}</span></div>
+    <div class="row" id="firebaseShareRow" ${state.remoteShareLink ? "" : "hidden"}>
+      <label class="share-link-label">Parent live location link
+        <input id="firebaseShareLink" value="${escapeHTML(state.remoteShareLink)}" readonly>
+      </label>
+      <button id="shareFirebaseShareLink" class="btn" onclick="shareParentLiveLocation()">Share link…</button>
+      <button id="copyFirebaseShareLink" class="btn secondary" onclick="copyParentShareLink()">Copy link</button>
+    </div>` : `<div class="gps-share-note"><strong>Sharing:</strong> <span id="firebaseStatusText">${escapeHTML(remoteStatusText())}</span></div>`;
+  return `<div class="map-location-row">
+    <label for="mapPlaceInput">Map preview area
+      <input id="mapPlaceInput" value="${place}" placeholder="Enter a school, address, or city" ${(state.busSharing || state.busLocation) ? "disabled" : ""}>
+    </label>
+    <button class="btn secondary" onclick="setMapPlace()" ${(state.busSharing || state.busLocation) ? "disabled" : ""}>Show on map</button>
+  </div>
+  <div class="map-shell">
+    ${mapFrame}
+    <div class="map-overlay" aria-hidden="true"><div class="map-center-overlay">${marker}<div id="mapLocationHint" class="map-location-hint" ${hasFix ? "hidden" : ""}>${state.busSharing ? "Waiting for a GPS location from this device…" : "Start location sharing on the bus device to place the bus on the map."}</div></div></div>
+    <div id="mapLiveBadge" class="map-live-badge"><span class="live-dot" style="background:${badgeColor};margin:0;"></span>${badgeText}</div>
+  </div>
+  <div class="map-caption"><p class="muted" id="busLocationStatus">${escapeHTML(locationStatusText())}</p>
+    <a id="openGoogleMapsLink" href="${googleMapsLink()}" target="_blank" rel="noopener noreferrer">Open in Google Maps ↗</a>
+  </div>
+  <p class="gps-coordinates" id="busCoordinates">${escapeHTML(locationCoordinatesText())}</p>
+  ${controls}
+  ${firebasePanel}
+  <p class="muted" style="margin-top:8px;">${escapeHTML(sharingScopeText())}</p>`;
+}
+function setMapPlace(){
+  const input = document.getElementById("mapPlaceInput");
+  if(!input || !input.value.trim() || state.busSharing) return;
+  state.mapPlace = input.value.trim();
+  render();
+}
+async function connectFirebaseForDriver(){
+  if(!FIREBASE_LOCATION_SHARING_ENABLED){
+    state.firebaseStatus = firebaseSetupStatus();
+    updateLiveLocationUI();
+    return;
+  }
+  if(!firebaseConfigurationReady()){
+    state.firebaseStatus = firebaseSetupStatus();
+    updateLiveLocationUI();
+    return;
+  }
+  if(!firebaseHostedPageReady()){
+    state.firebaseStatus = "Host this page on HTTPS before creating parent links. Device GPS can still run locally.";
+    updateLiveLocationUI();
+    return;
+  }
+  state.firebaseStatus = "Connecting to Firebase…";
+  updateLiveLocationUI();
+  try{
+    await ensureFirebaseAuth();
+    if(!state.busSharing) return;
+    state.firebaseStatus = "Connected. Waiting for the first GPS fix…";
+    updateLiveLocationUI();
+    maybeCreateFirebaseShare();
+  }catch(error){
+    state.firebaseStatus = "Firebase connection failed: " + error.message;
+    updateLiveLocationUI();
+  }
+}
+async function maybeCreateFirebaseShare(){
+  if(creatingFirebaseShare || !state.busSharing || !state.busLocation || !firebaseDatabase || !firebaseUser || state.remoteReadOnly || state.remoteShareId) return;
+  creatingFirebaseShare = true;
+  const shareId = generateShareToken();
+  const shareDurationMs = state.shareDurationMinutes * 60 * 1000;
+  const expiresAt = Date.now() + shareDurationMs;
+  const ref = firebaseDatabase.ref(`${FIREBASE_SESSION_PATH}/${shareId}`);
+  state.firebaseStatus = "Creating a private parent link…";
+  updateLiveLocationUI();
+  try{
+    await ref.set({
+      ownerUid:firebaseUser.uid,
+      latitude:state.busLocation.latitude,
+      longitude:state.busLocation.longitude,
+      accuracy:state.busLocation.accuracy,
+      updatedAt:firebase.database.ServerValue.TIMESTAMP,
+      active:true,
+      expiresAt
+    });
+    if(!state.busSharing){
+      await ref.update({active:false, updatedAt:firebase.database.ServerValue.TIMESTAMP});
+      state.firebaseStatus = "Location sharing stopped before the parent link finished creating.";
+      updateLiveLocationUI();
+      return;
+    }
+    firebaseShareRef = ref;
+    state.remoteShareId = shareId;
+    state.remoteShareExpiresAt = expiresAt;
+    state.remoteShareLink = buildParentShareURL(shareId);
+    state.firebaseStatus = `Live location link ready. It expires in ${shareDurationLabel(state.shareDurationMinutes)}.`;
+    lastFirebaseWriteAt = Date.now();
+    ref.onDisconnect().update({active:false, updatedAt:firebase.database.ServerValue.TIMESTAMP}).catch(() => {});
+    if(firebaseExpiryTimer) clearTimeout(firebaseExpiryTimer);
+    firebaseExpiryTimer = setTimeout(() => {
+      if(state.busSharing && state.remoteShareId === shareId){
+        stopLocationSharing(true);
+      }
+    }, Math.max(0, shareDurationMs));
+    render();
+  }catch(error){
+    state.firebaseStatus = "Could not create parent link: " + error.message;
+    updateLiveLocationUI();
+  }finally{
+    creatingFirebaseShare = false;
+  }
+}
+async function publishFirebaseLocation(){
+  if(!firebaseShareRef || !state.busSharing || !state.busLocation || state.remoteReadOnly) return;
+  const now = Date.now();
+  if(now - lastFirebaseWriteAt < FIREBASE_WRITE_INTERVAL_MS) return;
+  lastFirebaseWriteAt = now;
+  try{
+    await firebaseShareRef.update({
+      latitude:state.busLocation.latitude,
+      longitude:state.busLocation.longitude,
+      accuracy:state.busLocation.accuracy,
+      updatedAt:firebase.database.ServerValue.TIMESTAMP,
+      active:true
+    });
+  }catch(error){
+    state.firebaseStatus = "GPS is local, but Firebase update failed: " + error.message;
+    updateLiveLocationUI();
+  }
+}
+async function copyParentShareLink(){
+  if(!state.remoteShareLink) return;
+  try{
+    await navigator.clipboard.writeText(state.remoteShareLink);
+    state.firebaseStatus = "Parent link copied. Send it only to the intended parents.";
+  }catch(error){
+    const input = document.getElementById("firebaseShareLink");
+    if(input){ input.focus(); input.select(); state.firebaseStatus = "Link selected. Copy it and send it only to the intended parents."; }
+  }
+  updateLiveLocationUI();
+}
+async function shareParentLiveLocation(){
+  if(!state.remoteShareLink) return;
+  if(navigator.share){
+    try{
+      await navigator.share({
+        title:"Live school bus location",
+        text:"Open this link to see the bus live location while sharing is active:",
+        url:state.remoteShareLink
+      });
+      state.firebaseStatus = "Parent link shared. The selected app will show the live bus location.";
+      updateLiveLocationUI();
+      return;
+    }catch(error){
+      if(error.name === "AbortError") return;
+      state.firebaseStatus = "Could not open the share sheet. Copy the parent link instead.";
+      updateLiveLocationUI();
+      return;
+    }
+  }
+  await copyParentShareLink();
+}
+function setShareDuration(value){
+  if(state.busSharing) return;
+  const minutes = Number(value);
+  if([15, 60, FIREBASE_MAX_SHARE_HOURS * 60].includes(minutes)) state.shareDurationMinutes = minutes;
+}
+function initializeFirebaseParentView(){
+  const shareId = new URLSearchParams(window.location.search).get("share");
+  if(!shareId) return;
+  state.remoteReadOnly = true;
+  state.role = "parent";
+  state.remoteShareId = shareId;
+  if(!/^[a-f0-9]{48}$/.test(shareId)){
+    state.firebaseStatus = "This parent link is invalid.";
+    render();
+    return;
+  }
+  state.firebaseStatus = "Connecting to the shared bus location…";
+  render();
+  if(!firebaseConfigurationReady()){
+    state.firebaseStatus = firebaseSetupStatus();
+    updateLiveLocationUI();
+    return;
+  }
+  if(!FIREBASE_LOCATION_SHARING_ENABLED){
+    state.firebaseStatus = firebaseSetupStatus();
+    updateLiveLocationUI();
+    return;
+  }  if(!firebaseHostedPageReady()){
+    state.firebaseStatus = "Open this link from the secure HTTPS site to view the bus location.";
+    updateLiveLocationUI();
+    return;
+  }
+  ensureFirebaseAuth().then(({database}) => {
+    firebaseListenerRef = database.ref(`${FIREBASE_SESSION_PATH}/${shareId}`);
+    firebaseListenerRef.on("value", snapshot => {
+      const data = snapshot.val();
+      if(!data){
+        state.busLocation = null;
+        state.busSharing = false;
+        state.firebaseStatus = "No location is available. The link may have expired or sharing may not have started.";
+      }else{
+        state.busLocation = {
+          latitude:Number(data.latitude),
+          longitude:Number(data.longitude),
+          accuracy:Number(data.accuracy),
+          timestamp:Number(data.updatedAt) || Date.now()
+        };
+        state.busSharing = !!data.active && Number(data.expiresAt) > Date.now();
+        state.remoteShareExpiresAt = Number(data.expiresAt) || 0;
+        state.firebaseStatus = state.busSharing
+          ? `Receiving live bus GPS. Link expires ${new Date(state.remoteShareExpiresAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}.`
+          : "Bus sharing has stopped. The last reported position is shown.";
+      }
+      updateLiveLocationUI();
+    }, error => {
+      if(error && error.code === "PERMISSION_DENIED"){
+        state.busLocation = null;
+        state.busSharing = false;
+        state.firebaseStatus = "This live-location session has stopped or expired. Ask the driver for a new link.";
+      }else{
+        state.firebaseStatus = "Could not open this location link: " + error.message;
+      }
+      updateLiveLocationUI();
+    });
+  }).catch(error => {
+    state.firebaseStatus = "Firebase sign-in failed: " + error.message;
+    updateLiveLocationUI();
+  });
+}
+function updateLiveLocationUI(){
+  const status = document.getElementById("busLocationStatus");
+  const coordinates = document.getElementById("busCoordinates");
+  const marker = document.getElementById("busMapMarker");
+  const hint = document.getElementById("mapLocationHint");
+  const badge = document.getElementById("mapLiveBadge");
+  const firebaseStatus = document.getElementById("firebaseStatusText");
+  const shareRow = document.getElementById("firebaseShareRow");
+  const shareInput = document.getElementById("firebaseShareLink");
+  const startButton = document.getElementById("startLocationButton");
+  const stopButton = document.getElementById("stopLocationButton");
+  const durationSelect = document.getElementById("shareDurationSelect");
+  const iframe = document.getElementById("googleMapFrame");
+  const link = document.getElementById("openGoogleMapsLink");
+  if(status) status.textContent = locationStatusText();
+  if(coordinates) coordinates.textContent = locationCoordinatesText();
+  if(marker){
+    marker.hidden = !state.busLocation;
+    marker.classList.toggle("stopped", !state.busSharing);
+  }
+  if(hint){
+    hint.hidden = !!state.busLocation;
+    if(!state.busLocation) hint.textContent = state.busSharing ? "Waiting for a GPS location from this device…" : "Start location sharing on the bus device to place the bus on the map.";
+  }
+  if(badge){
+    const label = state.locationError ? "GPS ERROR" : state.locationNotice ? (state.busLocation ? "GPS DELAYED" : "GPS STARTING") : state.busSharing ? (state.busLocation ? "LIVE GPS" : "GPS STARTING") : state.busLocation ? "LAST GPS FIX" : "GPS NOT SHARING";
+    badge.lastChild.textContent = label;
+    const dot = badge.querySelector(".live-dot");
+    if(dot) dot.style.background = state.locationError ? "#ff6973" : state.busSharing && state.busLocation && !state.locationNotice ? "#47d17c" : state.busSharing ? "#ffbf47" : "#ff6973";
+  }
+  if(link) link.href = googleMapsLink();
+  if(firebaseStatus) firebaseStatus.textContent = remoteStatusText();
+  if(shareRow) shareRow.hidden = !state.remoteShareLink;
+  if(shareInput) shareInput.value = state.remoteShareLink;
+  if(startButton) startButton.disabled = state.busSharing;
+  if(stopButton) stopButton.disabled = !state.busSharing;
+  if(durationSelect){ durationSelect.value = String(state.shareDurationMinutes); durationSelect.disabled = state.busSharing; }
+  const now = Date.now();
+  if(iframe && state.busLocation && now - lastMapRefreshAt >= 15000){
+    iframe.src = googleMapEmbedURL();
+    lastMapRefreshAt = now;
+  }
+}
+function startLocationSharing(){
+  if(state.busSharing || state.remoteReadOnly) return;
+  if(!window.isSecureContext){
+    state.locationError = "GPS requires a secure page. Open this prototype on HTTPS or localhost.";
+    updateLiveLocationUI();
+    return;
+  }
+  if(!navigator.geolocation){
+    state.locationError = "This browser does not provide device geolocation.";
+    updateLiveLocationUI();
+    return;
+  }
+  state.locationError = "";
+  state.locationNotice = "";
+  state.busLocation = null;
+  state.remoteShareId = "";
+  state.remoteShareLink = "";
+  state.remoteShareExpiresAt = 0;
+  firebaseShareRef = null;
+  lastFirebaseWriteAt = 0;
+  if(firebaseExpiryTimer){ clearTimeout(firebaseExpiryTimer); firebaseExpiryTimer = null; }
+  state.firebaseStatus = "Preparing remote sharing…";
+  state.busSharing = true;
+  render();
+  try{
+    locationWatchId = navigator.geolocation.watchPosition(onDeviceLocation, onLocationError, {
+      enableHighAccuracy:true, maximumAge:2000, timeout:60000
+    });
+    connectFirebaseForDriver();
+  }catch(error){
+    state.busSharing = false;
+    state.locationError = "Could not start device location: " + error.message;
+    render();
+  }
+}
+function stopLocationSharing(expired=false){
+  if(locationWatchId !== null){
+    navigator.geolocation.clearWatch(locationWatchId);
+    locationWatchId = null;
+  }
+  if(!state.busSharing) return;
+  state.busSharing = false;
+  state.locationError = "";
+  state.locationNotice = "";
+  if(firebaseExpiryTimer){ clearTimeout(firebaseExpiryTimer); firebaseExpiryTimer = null; }
+  const refToStop = firebaseShareRef;
+  if(refToStop){
+    refToStop.update({active:false, updatedAt:firebase.database.ServerValue.TIMESTAMP})
+      .then(() => { state.firebaseStatus = expired ? "The selected live-location session expired. Parents can no longer access its location." : "Sharing stopped. Parents can no longer access this session."; updateLiveLocationUI(); })
+      .catch(error => { state.firebaseStatus = "Stopped locally, but Firebase could not be updated: " + error.message; updateLiveLocationUI(); });
+  }else if(!state.remoteShareId){
+    state.firebaseStatus = expired ? "The selected live-location session expired." : firebaseSetupStatus();
+  }
+  updateLiveLocationUI();
+  addNotification("Location sharing stopped on this device.");
+}
+function onDeviceLocation(position){
+  state.busLocation = {
+    latitude:position.coords.latitude,
+    longitude:position.coords.longitude,
+    accuracy:position.coords.accuracy,
+    timestamp:position.timestamp || Date.now()
+  };
+  state.locationError = "";
+  state.locationNotice = "";
+  updateLiveLocationUI();
+  maybeCreateFirebaseShare();
+  publishFirebaseLocation();
+}
+function onLocationError(error){
+  if(error.code === 1){
+    if(locationWatchId !== null){ navigator.geolocation.clearWatch(locationWatchId); locationWatchId = null; }
+    state.busSharing = false;
+    state.locationError = "Location permission denied. Allow location for this page in browser settings, then try again.";
+    state.locationNotice = "";
+    if(firebaseShareRef){ firebaseShareRef.update({active:false, updatedAt:firebase.database.ServerValue.TIMESTAMP}).catch(() => {}); }
+    if(firebaseExpiryTimer){ clearTimeout(firebaseExpiryTimer); firebaseExpiryTimer = null; }
+  }else if(error.code === 2){
+    state.locationError = "The device could not determine its location. Check GPS and location services.";
+    state.locationNotice = "";
+  }else{
+    state.locationError = "";
+    state.locationNotice = state.busLocation
+      ? "GPS updates are delayed; showing the last known bus position while waiting for another fix."
+      : "No location fix arrived within 60 seconds. Still waiting for GPS; check browser permission and this device’s location services. The map will update when a fix arrives.";
+  }
+  updateLiveLocationUI();
+  if(error.code === 1) render();
+}
+function camHTML(){
+  return `<div class="cam">
+    <span class="badge"><span class="live-dot" style="background:#fff;"></span>LIVE</span>
+    <div style="font-size:28px;">🎥</div>
+    <span class="muted" style="color:#9fb0c8;">In-bus camera feed placeholder</span>
+  </div>
+  <p class="muted" style="margin-top:8px;">In production this connects to a real video stream (e.g. WebRTC) from a camera on the bus.</p>`;
+}
+
+function renderParent(){
+  return `<div class="card"><h2>Live bus location</h2>${routeHTML()}</div>
+  <div>
+    <div class="card"><h2>Live camera</h2>${camHTML()}</div>
+    <div class="card" style="margin-top:16px;"><h2>Notifications</h2>${feedHTML()}</div>
+    <div class="card" style="margin-top:16px;"><h2>Send an update to school</h2>
+      <p class="muted">Send a short message about your child or today’s trip. School management can review it.</p>
+      <form class="parent-update-form" onsubmit="submitParentUpdate(event)">
+        <label class="muted" for="parentUpdateMessage">Your update</label>
+        <textarea id="parentUpdateMessage" maxlength="500" required placeholder="Write a message for school management"></textarea>
+        <button class="btn" type="submit">Send update</button>
+      </form>
+      <p class="muted" id="parentUpdateStatus" role="status">${escapeHTML(state.parentUpdateNotice)}</p>
+    </div>
+  </div>`;
+}
+
+function renderDriver(){
+  return `<div class="card"><h2>Live location</h2>${routeHTML(true)}
+    <div class="row">
+      <button class="btn" onclick="markArrived()">Mark bus arrived at school</button>
+    </div>
+  </div>
+  <div class="card"><h2>Drop-off</h2>
+    <p class="muted">Mark a student as dropped home — their parent is notified instantly.</p>
+    <div class="row">
+      <select id="dropSelect">${students.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select>
+      <button class="btn secondary" onclick="markDropped()">Mark dropped home</button>
+    </div>
+  </div>`;
+}
+
+function renderConductor(){
+  const rows = students.map(s => `
+    <label class="check">
+      <input type="checkbox" ${state.boarded[s.id]?"checked":""} onchange="toggleBoard(${s.id}, this.checked)">
+      ${s.name} boarded
+    </label>`).join("");
+  return `<div class="card"><h2>Pickup roll call · ${students.length} students</h2><div class="rollcall-list">${rows}</div>
+    <div class="row"><button class="btn" onclick="submitRollCall()">Submit pickup roll call</button></div>
+    <p class="muted" style="margin-top:8px;">Any student not checked is flagged as having missed the bus, and their parent is notified.</p>
+  </div>
+  <div class="card"><h2>Notifications sent</h2>${feedHTML(8)}</div>`;
+}
+
+function renderManagement(){
+  const rows = students.map(s => {
+    const status = state.boarded[s.id]===true ? `<span class="status ok">On bus</span>`
+      : state.boarded[s.id]===false ? `<span class="status miss">Missed bus</span>`
+      : `<span class="status pending">Not checked</span>`;
+    return `<tr><td>${s.name}</td><td>${status}</td></tr>`;
+  }).join("");
+  const applications = state.parentApplications.length
+    ? `<ul class="activity-list">${state.parentApplications.map(application => `<li><strong>${escapeHTML(application.parentName || "Parent")} · ${escapeHTML(application.status || "pending")}</strong><span>Student: ${escapeHTML(application.studentName || "Not provided")} · ID: ${escapeHTML(application.studentId || "Not provided")}${application.busRoute ? ` · Bus: ${escapeHTML(application.busRoute)}` : ""}</span><span>${escapeHTML(application.email || "Email not provided")}</span><time>${escapeHTML(displayActivityTime(application.createdAt))}</time></li>`).join("")}</ul>`
+    : `<p class="muted">No parent sign-up requests are visible yet.</p>`;
+  const activity = state.managementActivity.length
+    ? `<ul class="activity-list">${state.managementActivity.map(item => `<li><strong>${escapeHTML(String(item.role || "User").replace(/^./, ch => ch.toUpperCase()))} · ${escapeHTML(item.type || "update")}</strong><div class="activity-message">${escapeHTML(item.message || "")}</div><time>${escapeHTML(item.actorEmail || item.actorUid || "Account")} · ${escapeHTML(displayActivityTime(item.createdAt))}</time></li>`).join("")}</ul>`
+    : `<p class="muted">No role updates are visible yet.</p>`;
+  const reviewStatus = !FIREBASE_PARENT_REVIEW_SYNC_ENABLED || !FIREBASE_ACTIVITY_SYNC_ENABLED
+    ? "Parent-application and activity syncing are disabled in this location-only deployment."
+    : (state.managementDataError || "Updates refresh automatically when Firebase receives a new submission.");
+  return `<div class="card"><h2>Parent sign-up requests</h2><p class="muted">Account sign-up is temporarily hidden. Existing pending requests will appear here when review syncing is enabled.</p>${applications}</div>
+  <div class="card"><h2>Parent, Driver, and Conductor updates</h2><p class="muted">Recent role updates appear here when Firebase sharing is enabled.</p>${activity}<p class="muted" role="status">${escapeHTML(reviewStatus)}</p></div>
+  <div class="card"><h2>Today's roll status · ${students.length} students</h2>
+    <div class="table-scroll"><table><thead><tr><th>Student</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="row"><button class="btn alert" onclick="flagUnresolved()">Flag unresolved arrivals</button></div>
+  </div>
+  <div class="card"><h2>Live bus location</h2>${routeHTML()}</div>
+  <div class="card"><h2>Activity feed</h2>${feedHTML(10)}</div>`;
+}
+
+function render(){
+  renderTabs();
+  const main = document.getElementById("main");
+  if(state.role==="parent") main.innerHTML = renderParent();
+  else if(state.role==="driver") main.innerHTML = renderDriver();
+  else if(state.role==="conductor") main.innerHTML = renderConductor();
+  else main.innerHTML = renderManagement();
+  if(state.role === "management") startManagementReviewListeners();
+  else stopManagementReviewListeners();
+}
+
+function markArrived(){
+  state.arrivedAtSchool = true;
+  recordRoleActivity("bus_arrived", "Driver marked the bus as arrived at school.");
+  addNotification("🚌 Bus has arrived at school — driver and management notified.");
+}
+function markDropped(){
+  const id = Number(document.getElementById("dropSelect").value);
+  const s = students.find(x=>x.id===id);
+  state.droppedHome[id] = true;
+  recordRoleActivity("student_dropped", `${s.name} marked as dropped home.`);
+  addNotification(`🏠 ${s.name} has been dropped home — ${s.parent} notified.`);
+}
+function toggleBoard(id, val){ state.boarded[id] = val; }
+function submitRollCall(){
+  let missed = 0;
+  const missedNotifications = [];
+  students.forEach(s => {
+    if(state.boarded[s.id] === true){
+      // no alert needed, boarded fine
+    } else if(state.boarded[s.id] === false || state.boarded[s.id] === null){
+      state.boarded[s.id] = false;
+      missedNotifications.push({text:`⚠️ ${s.name} missed the bus at pickup — ${s.parent} notified.`, type:"alert", t:timeNow()});
+      missed++;
+    }
+  });
+  state.notifications.unshift(...missedNotifications.reverse());
+  state.notifications.unshift({text:`✅ Pickup roll call submitted (${students.length-missed}/${students.length} boarded).`, type:"info", t:timeNow()});
+  const missingNames = students.filter(student => state.boarded[student.id] !== true).map(student => student.name);
+  recordRoleActivity("roll_call", `Pickup roll call: ${students.length-missed}/${students.length} boarded. Not marked boarded: ${missingNames.length ? missingNames.join(", ") : "none"}.`);
+  render();
+}
+function flagUnresolved(){
+  const unresolved = students.filter(s => state.boarded[s.id] !== true);
+  if(!unresolved.length){ addNotification("✅ All students accounted for at school."); return; }
+  const notices = unresolved.map(s => ({text:`⚠️ ${s.name} has not reached school — ${s.parent} informed by management.`, type:"alert", t:timeNow()})).reverse();
+  state.notifications.unshift(...notices);
+  render();
+}
+
+render();
+initializeFirebaseParentView();
+</script>
+</body>
+</html>
